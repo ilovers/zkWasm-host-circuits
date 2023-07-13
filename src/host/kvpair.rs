@@ -6,7 +6,8 @@ use futures::executor;
 use halo2_proofs::pairing::bn256::Fr;
 use lazy_static;
 use mongodb::bson::{spec::BinarySubtype, Bson};
-use mongodb::options::DropCollectionOptions;
+use mongodb::options::{DropCollectionOptions, IndexOptions};
+use mongodb::IndexModel;
 use mongodb::{bson::doc, Client};
 use serde::{
     de::{Error, Unexpected},
@@ -74,6 +75,7 @@ impl MongoMerkle {
     fn get_collection_name(&self) -> String {
         format!("MERKLEDATA_{}", hex::encode(&self.contract_address))
     }
+
     fn get_db_name() -> String {
         return "zkwasmkvpair".to_string();
     }
@@ -232,13 +234,56 @@ impl MerkleTree<[u8; 32], 20> for MongoMerkle {
     type Node = MerkleRecord;
 
     fn construct(addr: Self::Id, root: Self::Root) -> Self {
-        let client = executor::block_on(Client::with_uri_str(MONGODB_URI)).expect("Unexpected DB Error");
-        MongoMerkle {
-            client,
+        let client =
+            executor::block_on(Client::with_uri_str(MONGODB_URI)).expect("Unexpected DB Error");
+
+        let res = MongoMerkle {
+            client: client.clone(),
             contract_address: addr,
             root_hash: root,
             default_hash: (*DEFAULT_HASH_VEC).clone(),
-        }
+        };
+
+        executor::block_on(async {
+            let collection = client
+                .database(&Self::get_db_name())
+                .list_collection_names(None)
+                .await
+                .unwrap();
+
+            if !collection.contains(&res.get_collection_name()) {
+                client
+                    .database(&Self::get_db_name())
+                    .create_collection(&res.get_collection_name(), None)
+                    .await
+                    .unwrap();
+            }
+
+            let index = client
+                .database(&Self::get_db_name())
+                .collection::<MerkleRecord>(&res.get_collection_name())
+                .list_index_names()
+                .await
+                .unwrap();
+
+            if index.len() == 1 {
+                let options = IndexOptions::builder().unique(false).build();
+
+                let model = IndexModel::builder()
+                    .keys(doc! {"index": 1, "hash": -1})
+                    .options(options)
+                    .build();
+
+                client
+                    .database(&Self::get_db_name())
+                    .collection::<MerkleRecord>(&res.get_collection_name())
+                    .create_index(model, None)
+                    .await
+                    .expect("error creating index!");
+            }
+        });
+
+        res
     }
 
     fn get_root_hash(&self) -> [u8; 32] {
