@@ -5,10 +5,12 @@ use halo2_proofs::{
     plonk::{ConstraintSystem, Error},
 };
 
+pub const BN256FR_SIZE: usize = 4;
 //pub const BN256FQ_SIZE: usize = 5;
 pub const BN256G1_SIZE: usize = 11;
 pub const BN256G2_SIZE: usize = 21;
 pub const BN256GT_SIZE: usize = 60;
+pub const BN256SUM_GROUP_SIZE: usize = 1 + BN256FR_SIZE + 2 * BN256G1_SIZE;
 
 const BN256PAIR_SIZE: usize = BN256G1_SIZE + BN256G2_SIZE + BN256GT_SIZE;
 const BN256SUM_SIZE: usize = BN256G1_SIZE * 3;
@@ -220,34 +222,9 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         let mut offset = 0;
         let mut r = vec![];
 
-        for group in selected_entries.chunks_exact(BN256G1_SIZE) {
-            for j in 0..2 {
-                for i in 0..2 {
-                    let (p_01, _op) = config.assign_merged_operands(
-                        region,
-                        &mut offset,
-                        vec![&group[5 * j + 2 * i], &group[5 * j + 2 * i + 1]],
-                        Fr::from_u128(1u128 << 54),
-                        true,
-                    )?;
-                    r.push(p_01);
-                }
-                let ((operand, opcode), index) = *group.get(5 * j + 4).clone().unwrap();
-                let (p_2, _op) = config.assign_one_line(
-                    region,
-                    &mut offset,
-                    operand,
-                    opcode,
-                    index,
-                    operand,
-                    Fr::zero(),
-                    true,
-                )?;
-                r.push(p_2);
-            }
-
-            // whether g1 is zero or not
-            let ((operand, opcode), index) = *group.get(10).clone().unwrap();
+        for group in selected_entries.chunks_exact(BN256SUM_GROUP_SIZE) {
+            // whether new is zero or not
+            let ((operand, opcode), index) = *group.get(0).clone().unwrap();
             let (limb, _op) = config.assign_one_line(
                 region,
                 &mut offset,
@@ -259,6 +236,66 @@ impl HostOpSelector for Bn256SumChip<Fr> {
                 true,
             )?;
             r.push(limb);
+
+            // Fr
+            for subgroup in group
+                .clone()
+                .into_iter()
+                .skip(1)
+                .collect::<Vec<_>>()
+                .chunks_exact(BN256FR_SIZE)
+            {
+                let (limb, _) = config.assign_merged_operands(
+                    region,
+                    &mut offset,
+                    subgroup.to_vec(),
+                    Fr::from_u128(1u128 << 64),
+                    true,
+                )?;
+                r.push(limb);
+            }
+
+            // G1 and sum
+            for k in 0..2 {
+                for j in 0..2 {
+                    for i in 0..2 {
+                        let (p_01, _op) = config.assign_merged_operands(
+                            region,
+                            &mut offset,
+                            vec![&group[5 + 5 * j + 2 * i + 11 * k], &group[5 + 5 * j + 2 * i + 11 * k + 1]],
+                            Fr::from_u128(1u128 << 54),
+                            true,
+                        )?;
+                        r.push(p_01);
+                    }
+                    let ((operand, opcode), index) = *group.get(5 + 5 * j + 11 * k + 4).clone().unwrap();
+                    let (p_2, _op) = config.assign_one_line(
+                        region,
+                        &mut offset,
+                        operand,
+                        opcode,
+                        index,
+                        operand,
+                        Fr::zero(),
+                        true,
+                    )?;
+                    r.push(p_2);
+                }
+
+                // whether z is zero or not
+                let ((operand, opcode), index) = *group.get(15 + 11 * k).clone().unwrap();
+                let (limb, _op) = config.assign_one_line(
+                    region,
+                    &mut offset,
+                    operand,
+                    opcode,
+                    index,
+                    operand,
+                    Fr::zero(),
+                    true,
+                )?;
+                r.push(limb);
+            }
         }
         println!("r: {:?} with length {}", r, r.len());
         Ok(r)
@@ -270,10 +307,7 @@ impl HostOpSelector for Bn256SumChip<Fr> {
         layouter: &mut impl Layouter<Fr>,
     ) -> Result<(), Error> {
         self.range_chip.init_table(layouter)?;
-        let len = arg_cells.len();
-        let args = arg_cells[0..len - 7].to_vec();
-        let ret = arg_cells[len - 7..len].to_vec();
-        self.load_bn256_sum_circuit(&args, &ret, layouter)?;
+        self.load_bn256_sum_circuit(&arg_cells, layouter)?;
         Ok(())
     }
 }
