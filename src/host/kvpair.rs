@@ -1,4 +1,5 @@
-use super::MONGODB_URI;
+// use super::MONGODB_URI;
+use crate::host::cache::MERKLE_CACHE;
 use crate::host::merkle::{MerkleError, MerkleErrorCode, MerkleNode, MerkleTree};
 use crate::host::poseidon::MERKLE_HASHER;
 use crate::host::poseidon::POSEIDON_HASHER;
@@ -38,16 +39,16 @@ where
     binary.serialize(serializer)
 }
 
-fn bytes_to_bson(x: &[u8; 32]) -> Bson {
-    Bson::Binary(mongodb::bson::Binary {
-        subtype: BinarySubtype::Generic,
-        bytes: (*x).into(),
-    })
-}
+// fn bytes_to_bson(x: &[u8; 32]) -> Bson {
+//     Bson::Binary(mongodb::bson::Binary {
+//         subtype: BinarySubtype::Generic,
+//         bytes: (*x).into(),
+//     })
+// }
 
 #[derive(Debug)]
 pub struct MongoMerkle<const DEPTH: usize> {
-    client: Client,
+    // client: Client,
     contract_address: [u8; 32],
     root_hash: [u8; 32],
     default_hash: Vec<[u8; 32]>,
@@ -77,43 +78,56 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
     fn get_collection_name(&self) -> String {
         format!("MERKLEDATA_{}", hex::encode(&self.contract_address))
     }
-    fn get_db_name() -> String {
-        return "zkwasmkvpair".to_string();
-    }
+    // fn get_db_name() -> String {
+    //     return "zkwasmkvpair".to_string();
+    // }
 
     pub fn get_record(
         &self,
         index: u32,
         hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
-        let dbname = Self::get_db_name();
+        // let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
-        let mut filter = doc! {};
-        filter.insert("index", index);
-        filter.insert("hash", bytes_to_bson(hash));
-        collection.find_one(filter, None)
+        let cache_key = cname.clone() + &index.to_string() + &hex::encode(hash);
+        let mut cache = MERKLE_CACHE.lock().unwrap();
+        Ok(cache.get(&cache_key).cloned())
+        // if let Some(record) = cache.get(&cache_key) {
+        //     Ok(Some(record.clone()))
+        // } else {
+        //     println!("lru cache missed:{}", cache_key);
+        //     let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
+        //     let mut filter = doc! {};
+        //     filter.insert("index", index);
+        //     filter.insert("hash", bytes_to_bson(hash));
+        //     collection.find_one(filter, None)
+        // }
     }
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
     pub fn update_record(&self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
-        let dbname = Self::get_db_name();
+        // let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
-        let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
-        let mut filter = doc! {};
-        filter.insert("index", record.index);
-        filter.insert("hash", bytes_to_bson(&record.hash));
-        let exists = collection.find_one(filter, None)?;
-        exists.map_or(
-            {
-                collection.insert_one(record, None)?;
-                Ok(())
-            },
-            |_| {
-                //println!("find existing node, preventing duplicate");
-                Ok(())
-            },
-        )
+        let cache_key = cname.clone() + &record.index.to_string() + &hex::encode(&record.hash);
+        let mut cache = MERKLE_CACHE.lock().unwrap();
+        cache.push(cache_key.clone(), record.clone());
+        println!("lru cache push:{}", cache_key);
+        return Ok(());
+        // let collection = get_collection::<MerkleRecord>(&self.client, dbname, cname)?;
+        // let mut filter = doc! {};
+        // filter.insert("index", record.index);
+        // filter.insert("hash", bytes_to_bson(&record.hash));
+        // let exists = collection.find_one(filter, None)?;
+        // exists.map_or(
+        //     {
+        //         collection.insert_one(record, None)?;
+        //         Ok(())
+        //     },
+        //     |_| {
+        //         //println!("find existing node, preventing duplicate");
+        //         Ok(())
+        //     },
+        // )
     }
 }
 
@@ -157,8 +171,8 @@ impl MerkleNode<[u8; 32]> for MerkleRecord {
         let values: [Fr; 2] = batchdata.try_into().unwrap();
         hasher.update(&values);
         self.hash = hasher.squeeze().to_repr();
-        println!("update with values {:?}", values);
-        println!("update with new hash {:?}", self.hash);
+        // println!("update with values {:?}", values);
+        // println!("update with new hash {:?}", self.hash);
     }
     fn right(&self) -> Option<[u8; 32]> {
         Some(self.right)
@@ -235,9 +249,9 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
     type Node = MerkleRecord;
 
     fn construct(addr: Self::Id, root: Self::Root) -> Self {
-        let client = Client::with_uri_str(MONGODB_URI).expect("Unexpected DB Error");
+        // let client = Client::with_uri_str(MONGODB_URI).expect("Unexpected DB Error");
         MongoMerkle {
-            client,
+            // client,
             contract_address: addr,
             root_hash: root,
             default_hash: (*DEFAULT_HASH_VEC).clone(),
