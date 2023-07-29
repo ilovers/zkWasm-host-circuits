@@ -36,13 +36,6 @@ where
     binary.serialize(serializer)
 }
 
-fn bytes_to_bson(x: &[u8; 32]) -> Bson {
-    Bson::Binary(mongodb::bson::Binary {
-        subtype: BinarySubtype::Generic,
-        bytes: (*x).into(),
-    })
-}
-
 #[derive(Debug)]
 pub struct MongoMerkle<const DEPTH: usize> {
     contract_address: [u8; 32],
@@ -70,7 +63,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         format!("MERKLEDATA_{}", hex::encode(&self.contract_address))
     }
     fn get_db_name() -> String {
-        return "zkwasmkvpair".to_string();
+        return db::DB_NAME.to_string();
     }
 
     pub fn get_record(
@@ -78,18 +71,14 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         index: u32,
         hash: &[u8; 32],
     ) -> Result<Option<MerkleRecord>, mongodb::error::Error> {
-        let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
         let cache_key = get_cache_key(cname.clone(), index, hash);
         let mut cache = MERKLE_CACHE.lock().unwrap();
         if let Some(record) = cache.get(&cache_key) {
             Ok(Some(record.clone()))
         } else {
-            let collection = db::get_collection::<MerkleRecord>(dbname, cname)?;
-            let mut filter = doc! {};
-            filter.insert("index", index);
-            filter.insert("hash", bytes_to_bson(hash));
-            let record = collection.find_one(filter, None);
+            let store = db::STORE.lock().unwrap();
+            let record = store.get(index, hash);
             if let Ok(Some(value)) = record.clone() {
                 cache.push(cache_key, value);
             };
@@ -123,7 +112,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             for record in notfind.iter() {
                 let mut and_doc: Vec<mongodb::bson::Document> = vec![];
                 and_doc.push(doc! {"index": record.index});
-                and_doc.push(doc! {"hash": bytes_to_bson(&record.hash)});
+                and_doc.push(doc! {"hash": db::bytes_to_bson(&record.hash)});
                 docs.push(doc! {"$and": and_doc});
             }
             let filter = doc! {
@@ -152,9 +141,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
     /* We always insert new record as there might be uncommitted update to the merkle tree */
     pub fn update_record(&self, record: MerkleRecord) -> Result<(), mongodb::error::Error> {
-        let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
-        let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
         let exists: Result<Option<MerkleRecord>, mongodb::error::Error> =
             self.get_record(record.index, &record.hash);
         //println!("record is none: {:?}", exists.as_ref().unwrap().is_none());
@@ -167,7 +154,8 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
                         let cache_key = get_cache_key(cname, record.index, &record.hash);
                         let mut cache = MERKLE_CACHE.lock().unwrap();
                         cache.push(cache_key, record.clone());
-                        collection.insert_one(record, None)?;
+                        let mut store = db::STORE.lock().unwrap();
+                        store.set(record);
                         Ok(())
                     },
                     |_| Ok(()),
@@ -180,9 +168,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         &self,
         records: &Vec<MerkleRecord>,
     ) -> Result<(), mongodb::error::Error> {
-        let dbname = Self::get_db_name();
         let cname = self.get_collection_name();
-        let collection = db::get_collection::<MerkleRecord>(dbname, cname.clone())?;
         let (_, new_records) = self.batch_get_records(&records)?;
         /*
         println!(
@@ -193,12 +179,12 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
 
         if new_records.len() > 0 {
             let mut cache = MERKLE_CACHE.lock().unwrap();
+            let mut store = db::STORE.lock().unwrap();
             for record in new_records.iter() {
                 let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
                 cache.push(cache_key, record.clone());
+                store.set(record.clone());
             }
-
-            collection.insert_many(new_records, None)?;
         }
         Ok(())
     }
