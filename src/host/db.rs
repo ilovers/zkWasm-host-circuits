@@ -1,5 +1,6 @@
 use crate::host::kvpair::MerkleRecord;
 use crate::host::merkle::MerkleNode;
+// use hex::ToHex;
 use mongodb::bson::spec::BinarySubtype;
 use mongodb::bson::Bson;
 use mongodb::{
@@ -56,6 +57,7 @@ impl Store {
         if let Some(record) = self.cache.get(&(index, *hash)) {
             Ok(Some(record.clone()))
         } else {
+            // println!("query db hash={}", hash.encode_hex::<String>());
             let collection = get_collection::<MerkleRecord>(
                 DB_NAME.to_string(),
                 DEFAULT_COLLECTION_NAME.to_string(),

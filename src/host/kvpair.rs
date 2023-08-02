@@ -5,6 +5,7 @@ use crate::host::poseidon::MERKLE_HASHER;
 use crate::host::poseidon::POSEIDON_HASHER;
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
+// use hex::ToHex;
 use lazy_static;
 use mongodb::bson::doc;
 use mongodb::bson::{spec::BinarySubtype, Bson};
@@ -409,6 +410,7 @@ impl<const DEPTH: usize> MerkleTree<[u8; 32], DEPTH> for MongoMerkle<DEPTH> {
         let paths = self.get_path(index)?.to_vec();
         // We push the search from the top
         let hash = self.get_root_hash();
+        // println!("get_leaf_with_proof root={}", hash.encode_hex::<String>());
         let mut acc = 0;
         let mut parent_in_db = false;
         let mut acc_node = self
