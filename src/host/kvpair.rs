@@ -170,7 +170,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         records: &Vec<MerkleRecord>,
     ) -> Result<(), mongodb::error::Error> {
         let cname = self.get_collection_name();
-        let (_, new_records) = self.batch_get_records(&records)?;
+        // let (_, new_records) = self.batch_get_records(&records)?;
         /*
         println!(
             "records size is: {:?}, new record size is : {:?}",
@@ -178,15 +178,15 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             new_records.len()
         );*/
 
-        if new_records.len() > 0 {
-            let mut cache = MERKLE_CACHE.lock().unwrap();
-            let mut store = db::STORE.lock().unwrap();
-            for record in new_records.iter() {
-                let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
-                cache.push(cache_key, record.clone());
-                store.set(record.clone());
-            }
+        // if records.len() > 0 {
+        let mut cache = MERKLE_CACHE.lock().unwrap();
+        let mut store = db::STORE.lock().unwrap();
+        for record in records.iter() {
+            let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
+            cache.push(cache_key, record.clone());
+            store.set(record.clone());
         }
+        // }
         Ok(())
     }
 }
