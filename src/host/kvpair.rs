@@ -5,7 +5,6 @@ use crate::host::poseidon::MERKLE_HASHER;
 use crate::host::poseidon::POSEIDON_HASHER;
 use ff::PrimeField;
 use halo2_proofs::pairing::bn256::Fr;
-use hex::ToHex;
 use lazy_static;
 use mongodb::bson::doc;
 use mongodb::bson::{spec::BinarySubtype, Bson};
