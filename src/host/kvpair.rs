@@ -169,7 +169,7 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         records: &Vec<MerkleRecord>,
     ) -> Result<(), mongodb::error::Error> {
         let cname = self.get_collection_name();
-        // let (_, new_records) = self.batch_get_records(&records)?;
+        let (_, new_records) = self.batch_get_records(&records)?;
         /*
         println!(
             "records size is: {:?}, new record size is : {:?}",
@@ -181,21 +181,21 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
         //     hex::encode(self.root_hash)
         // );
 
-        // if new_records.len() > 0 {
-        let mut cache = MERKLE_CACHE.lock().unwrap();
-        let mut store = db::STORE.lock().unwrap();
-        // for record in new_records.iter() {
-        for record in records.iter() {
-            // println!(
-            //     "batch_update_records index:{}, hash:{}",
-            //     record.index,
-            //     hex::encode(record.hash)
-            // );
-            let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
-            cache.push(cache_key, record.clone());
-            store.set(record.clone());
+        if new_records.len() > 0 {
+            let mut cache = MERKLE_CACHE.lock().unwrap();
+            let mut store = db::STORE.lock().unwrap();
+            for record in new_records.iter() {
+                // for record in records.iter() {
+                // println!(
+                //     "batch_update_records index:{}, hash:{}",
+                //     record.index,
+                //     hex::encode(record.hash)
+                // );
+                let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
+                cache.push(cache_key, record.clone());
+                store.set(record.clone());
+            }
         }
-        // }
         Ok(())
     }
 }
