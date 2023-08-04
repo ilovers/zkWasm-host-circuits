@@ -200,10 +200,10 @@ pub trait MerkleTree<H: Debug + Clone + PartialEq, const D: usize> {
         index: u32,
         data: &Vec<u8>,
     ) -> Result<MerkleProof<H, D>, MerkleError> {
-        println!(
-            "update_leaf_data_with_proof index:{}, data:{:?}",
-            index, data
-        );
+        // println!(
+        //     "update_leaf_data_with_proof index:{}, data:{:?}",
+        //     index, data
+        // );
         let (mut leaf, _) = self.get_leaf_with_proof(index)?;
         leaf.set(data);
         self.set_leaf_with_proof(&leaf)

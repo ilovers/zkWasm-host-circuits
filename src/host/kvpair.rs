@@ -176,21 +176,21 @@ impl<const DEPTH: usize> MongoMerkle<DEPTH> {
             records.len(),
             new_records.len()
         );*/
-        println!(
-            "batch_update_records self root hash:{}",
-            hex::encode(self.root_hash)
-        );
+        // println!(
+        //     "batch_update_records self root hash:{}",
+        //     hex::encode(self.root_hash)
+        // );
 
         // if new_records.len() > 0 {
         let mut cache = MERKLE_CACHE.lock().unwrap();
         let mut store = db::STORE.lock().unwrap();
         // for record in new_records.iter() {
         for record in records.iter() {
-            println!(
-                "batch_update_records index:{}, hash:{}",
-                record.index,
-                hex::encode(record.hash)
-            );
+            // println!(
+            //     "batch_update_records index:{}, hash:{}",
+            //     record.index,
+            //     hex::encode(record.hash)
+            // );
             let cache_key = get_cache_key(cname.clone(), record.index, &record.hash);
             cache.push(cache_key, record.clone());
             store.set(record.clone());
